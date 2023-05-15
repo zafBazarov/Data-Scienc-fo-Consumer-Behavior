@@ -1,1 +1,1 @@
-# Data-Scienc-fo-Consumer-Behavior
+# Data-Scienc-for-Consumer-Behavior
