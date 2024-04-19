@@ -1,0 +1,91 @@
+---
+title: "Market Basket Analysis — Association Rules"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-04-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Sources
+
+This is not a original resource. I repeated exercise and did not create any codes. 
+
+Please visit these links for original sources: 
+
+https://towardsdatascience.com/a-gentle-introduction-on-market-basket-analysis-association-rules-fa4b986a40ce
+https://github.com/susanli2016/Data-Analysis-with-R/blob/master/Market_Basket_Analysis.Rmd
+
+
+```{r Thank you}
+print("Thank you Susan Li for useful content")
+```
+
+## Introduction
+
+Market Basket Analysis is one of the key techniques used by large retailers to uncover associations between items. It works by looking for combinations of items that occur together frequently in transactions. To put it another way, it allows retailers to identify relationships between the items that people buy.
+
+Association Rules are widely used to analyze retail basket or transaction data, and are intended to identify strong rules discovered in transaction data using measures of interestingness, based on the concept of strong rules.
+
+An example of Association Rules
+
+Assume there are 100 customers
+10 of them bought milk, 8 bought butter and 6 bought both of them.
+bought milk => bought butter
+support = P(Milk & Butter) = 6/100 = 0.06
+confidence = support/P(Butter) = 0.06/0.08 = 0.75
+lift = confidence/P(Milk) = 0.75/0.10 = 7.5
+Note: this example is extremely small. In practice, a rule needs the support of several hundred transactions, before it can be considered statistically significant, and datasets often contain thousands or millions of transactions.
+
+The dataset we are using today comes from UCI Machine Learning repository http://archive.ics.uci.edu/dataset/352/online+retail).
+The dataset is called “Online Retail” and can be found here. It contains all the transactions occurring between 01/12/2010 and 09/12/2011 for a UK-based and registered online retailer.
+
+```{r intro}
+
+```
+
+## Load the packages
+
+We need to install several packages for our analysis. A package should be installed once. 
+A library must be loaded every time when we close the working directory.
+
+
+```{r install packages}
+
+install.packages("tidyverse")
+library(tidyverse)
+
+install.packages("readxl")
+library(readxl)
+
+install.packages("knitr")
+library(knitr)
+
+install.packages("ggplot2")
+library(ggplot2)
+
+install.packages("lubridate")
+library(lubridate)
+
+install.packages("arules")
+library(arules)
+
+install.packages("arulesViz")
+library(arulesViz)
+
+install.packages("plyr")
+library(plyr)
+
+```
+
+## Load the packages
+
+We need to instal several packages for our analysis
+
+
+```{r cars}
+summary(cars)
+```
