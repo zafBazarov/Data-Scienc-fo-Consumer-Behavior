@@ -1,0 +1,325 @@
+---
+title: "Market Basket Analysis — Association Rules"
+author: "Zafarali Bazarov"
+date: "2024-04-11"
+output:
+  html_document:
+    df_print: paged
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Original Sources
+
+This is not a original resource! I repeated exercise and did not create any codes. 
+
+Please visit these links for original sources: 
+
+#https://towardsdatascience.com/a-gentle-introduction-on-market-basket-analysis-association-rules-fa4b986a40ce
+#https://github.com/susanli2016/Data-Analysis-with-R/blob/master/Market_Basket_Analysis.Rmd
+
+Additional source: 
+https://medium.com/geekculture/market-basket-analysis-and-association-rules-from-scratch-b621dd55e776
+https://medium.com/analytics-vidhya/market-basket-analysis-using-association-rules-2b0f3e2a897d
+https://medium.com/@niharika.goel/market-basket-analysis-association-rules-e7c27b377bd8
+
+```{r Thank you}
+print("Thank you Susan Li for useful content")
+```
+
+## Introduction
+
+Market Basket Analysis is one of the key techniques used by large retailers to uncover associations between items. It works by looking for combinations of items that occur together frequently in transactions. To put it another way, it allows retailers to identify relationships between the items that people buy.
+
+Association Rules are widely used to analyze retail basket or transaction data, and are intended to identify strong rules discovered in transaction data using measures of interestingness, based on the concept of strong rules.
+
+An example of Association Rules
+
+Assume there are 100 customers
+10 of them bought milk, 8 bought butter and 6 bought both of them.
+bought milk => bought butter
+support = P(Milk & Butter) = 6/100 = 0.06
+confidence = support/P(Butter) = 0.06/0.08 = 0.75
+lift = confidence/P(Milk) = 0.75/0.10 = 7.5
+Note: this example is extremely small. In practice, a rule needs the support of several hundred transactions, before it can be considered statistically significant, and datasets often contain thousands or millions of transactions.
+
+# Support
+It calculates how often the product is purchased. 
+Support is an indication of how frequently the item set appears in the data set.
+In other words, it’s the number of transactions with both X and Y divided by the total number of transactions. The rules are not useful for low support values.
+
+# Confidence
+It measures how often items in Y appear in transactions that contain X and is given by the formula.
+
+# Lift
+It is the value that tells us how likely item Y is bought together with item X. Values greater than one indicate that the items are likely to be purchased together. It tells us how much better a rule is at predicting the result than just assuming the result in the first place. When lift > 1 then the rule is better at predicting the result than guessing. When lift < 1, the rule is doing worse than informed guessing.
+  
+```{r intro}
+
+```
+
+## Load the packages
+
+We need to install several packages for our analysis. A package should be installed once. 
+A library must be loaded every time when we close the working directory.
+
+
+```{r install packages}
+
+#install.packages("tidyverse")
+library(tidyverse)
+
+#install.packages("readxl")
+library(readxl)
+
+#install.packages("knitr")
+library(knitr)
+
+#install.packages("ggplot2")
+library(ggplot2)
+
+#install.packages("lubridate")
+library(lubridate)
+
+#install.packages("arules")
+library(arules)
+
+#install.packages("arulesViz")
+library(arulesViz)
+
+#install.packages("plyr")
+library(plyr)
+
+```
+
+## Data preprocessing and exploring 
+
+The dataset we are using today comes from UCI Machine Learning repository http://archive.ics.uci.edu/dataset/352/online+retail).
+The dataset is called “Online Retail” and can be found here. It contains all the transactions occurring between 01/12/2010 and 09/12/2011 for a UK-based and registered online retailer.
+
+```{r import}
+
+retail <- read_excel('Online_Retail.xlsx')
+
+glimpse(retail)
+```
+
+# We change the type of some variables and assign mine factor. 
+
+```{r modify}
+
+retail <- retail[complete.cases(retail), ]
+retail <- retail %>% mutate(Description = as.factor(Description))
+retail <- retail %>% mutate(Country = as.factor(Country))
+retail$Date <- as.Date(retail$InvoiceDate)
+retail$Time <- format(retail$InvoiceDate,"%H:%M:%S")
+retail$InvoiceNo <- as.numeric(as.character(retail$InvoiceNo))
+
+glimpse(retail)
+
+```
+
+# We provide some visualisation
+
+What time do people often purchase online?
+
+In order to find the answer to this question, we need to extract “hour” from the time
+column.
+
+There is a clear bias between the hour of day and order volume. Most orders
+happened between 10:00–15:00.
+
+```{r}
+retail$Time <- as.factor(retail$Time)
+a <- hms(as.character(retail$Time))
+retail$Time = hour(a)
+
+retail %>%
+  ggplot(aes(x = Time)) +
+  geom_histogram(stat="count", fill = "indianred") +
+  labs(title = "Shopping Time Distribution", x = "Time", y = "Count")
+  
+```
+
+How many items each customer buy?
+
+People mostly purchased less than 10 items (less than 10 items in each invoice).
+
+```{r}
+
+detach("package:plyr", unload=TRUE)
+
+retail %>%
+group_by(InvoiceNo) %>%
+summarize(n_items = mean(Quantity)) %>%
+ggplot(aes(x=n_items))+
+geom_histogram(fill="indianred", bins = 100000) +
+geom_rug()+
+coord_cartesian(xlim=c(0,80))
+
+
+```
+
+Find Top 10 best seller products
+
+
+```{r}
+
+tmp <- retail %>%
+group_by(StockCode, Description) %>%
+summarize(count = n()) %>%
+arrange(desc(count))
+tmp <- head(tmp, n=10)
+tmp
+tmp %>%
+ggplot(aes(x=reorder(Description,count), y=count))+
+geom_bar(stat="identity",fill="indian red")+
+coord_flip()
+
+```
+
+# Association rules for online retailer
+
+Before using any rule mining algorithm, we need to transform the data from the
+data frame format, into transactions such that we have all the items bought together
+in one row.
+
+The function ddply() accepts a data frame, splits it into pieces based on one or more
+factors, computes on the pieces, and then returns the results as a data frame. We
+use “,” to separate different items.
+
+```{r}
+
+retail_sorted <- retail[order(retail$CustomerID),]
+
+library(plyr)
+
+itemList <- ddply(retail,c("CustomerID","Date"),
+function(df1)paste(df1$Description,
+collapse = ","))
+
+glimpse(itemList)
+
+```
+
+We only need item transactions, so remove customerID and Date columns.
+
+```{r}
+
+itemList$CustomerID <- NULL
+
+itemList$Date <- NULL
+
+colnames(itemList) <- c("items")
+
+glimpse(itemList)
+
+```
+
+Write the data fram to a csv file and check whether our transaction format is
+correct.
+
+Now we have our transaction dataset, and it shows the matrix of items being
+bought together. We don’t actually see how often they are bought together, and we
+don’t see rules either. But we are going to find out.
+
+```{r}
+write.csv(itemList,"market_basket.csv", quote = FALSE, row.names =
+TRUE)
+
+```
+
+Let’s have a closer look at how many transactions we have and what they are.
+
+We see 19,296 transactions, and this is the number of rows as well. There are 7,881
+items — remember items are the product descriptions in our original dataset.
+Transactions here are the collections or subsets of these 7,881 items.
+
+```{r}
+
+tr <- read.transactions('market_basket.csv', format = 'basket', sep=',')
+tr
+
+```
+
+# The summary gives us some useful information:
+- density: The percentage of non-empty cells in the sparse matrix. In another
+words, the total number of items that are purchased divided by the total number
+of possible items in that matrix. We can calculate how many items were
+purchased using density like so: 19296 X 7881 X 0.0022
+ 
+- The most frequent items should be the same as our results in Figure 3.
+
+- Looking at the size of the transactions: 2247 transactions were for just 1 item,
+1147 transactions for 2 items, all the way up to the biggest transaction: 1
+transaction for 420 items. This indicates that most customers buy a small
+number of items in each transaction.
+
+- The distribution of the data is right skewed.
+
+```{r}
+
+summary(tr)
+
+```
+
+Let’s have a look at the item frequency plot, which should be in aligned with this Figure.
+
+```{r}
+
+itemFrequencyPlot(tr, topN=20, type='absolute')
+
+```
+
+# Create some rules
+
+We use the Apriori algorithm in Arules library to mine frequent itemsets and
+association rules. The algorithm employs level-wise search for frequent
+itemsets.
+We pass supp=0.001 and conf=0.8 to return all the rules that have a support of at
+least 0.1% and confidence of at least 80%.
+We sort the rules by decreasing confidence.
+Have a look at the summary of the rules.
+
+
+```{r}
+rules <- apriori(tr, parameter = list(supp=0.001, conf=0.8))
+rules <- sort(rules, by='confidence', decreasing = TRUE)
+
+```
+
+The summary of the rules gives us some very interesting information.
+The number of rules: 89,697.
+The distribution of rules by length: a length of 6 items has the most rules.
+The summary of quality measures: ranges of support, confidence, and lift.
+The information on data mining: total data mined, and the minimum
+parameters we set earlier.
+
+```{r}
+
+summary(rules)
+
+```
+
+We have 89,697 rules. I don’t want to print them all, so let’s inspect the top 10.
+
+The interpretation is pretty straight forward.
+100% customers who bought “WOBBLY CHICKEN” also bought “DECORATION”.
+100% customers who bought “BLACK TEA” also bought “SUGAR JAR”.
+
+```{r}
+
+inspect(rules[1:10])
+
+```
+
+And plot these top 10 rules.
+
+```{r}
+topRules <- rules[1:10]
+plot(topRules)
+
+```
+
